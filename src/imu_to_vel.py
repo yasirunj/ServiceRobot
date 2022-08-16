@@ -1,52 +1,46 @@
+#!/usr/bin/env python3
+
 import rospy
 import numpy as np
-from simple_pid import PID
 
 from geometry_msgs.msg import Twist
-from geographic_msgs.msg import Vector3
+from std_msgs.msg import String
+from sensor_msgs.msg import Imu
 
-pid_Left = PID(1, 0.1, 0.05, setpoint=1)
-pid_Right = PID(1, 0.1, 0.05, setpoint=1)
+global v, acc_0
+
+# v = 0
+# acc_0 = 0
 
 global msg
 
-def velCmdCallBack(velCmd):
-    global demandx, demandz
+def riemann_sum(acc_x):
 
-    demandx = velCmd.linear.x
-    demandz = velCmd.angular.z
+    dt = 0.025
 
-def velCallBack(vel):
-    global supplyx, supplyz
+    v = v + ((acc_0 + acc_x)/2)*dt
 
-    supplyx = vel.linear.x
-    supplyz = vel.angular.z
+    acc_0 = acc_x
+    
+    return v
 
-def controller():
-    pub = rospy.Publisher('motor_pub', Vector3, queue_size=10)
+def imuCallBack(imu):
 
-    demandLeft = demandx - (demandz*0.32)
-    demandRight = demandx + (demandz*0.32)
+    pub = rospy.Publisher('vel_pub', Twist, queue_size=10)
 
-    supplyLeft = supplyx - (supplyz*0.32)
-    supplyRight = supplyx + (supplyz*0.32)
+    msg.linear.x = riemann_sum(imu.linear_acceleration.x)
+    msg.linear.y = 0
+    msg.linear.z = 0
+    msg.angular.z = imu.angular_acceleration.z
 
-    pid_Left.setpoint = demandLeft
-    pid_Right.setpoint = demandRight 
-
-    controlled_Left = pid_Left(supplyLeft)   
-    controlled_Right = pid_Right(supplyRight)  
-
-    msg.x = controlled_Left
-    msg.y = controlled_Right
-
-    pub.publish()
+    pub.publish(msg)
 
 def listener():
-    rospy.init_node('diff_motor_controller', anonymous=True)
+    rospy.init_node('imutovel', anonymous=True)
 
-    rospy.Subscriber("cmd_vel", Twist, velCmdCallBack)
-    rospy.Subscriber("vel_pub", Twist, velCallBack)
+    rospy.Subscriber("rtabmap/imu", Imu, imuCallBack)
+
+    rate = rospy.Rate(40)
 
     rospy.spin()
 
